@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -5,11 +6,18 @@ import {
   Dimensions,
   useWindowDimensions,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import {
+  useSharedValue,
+  useDerivedValue,
+  runOnJS,
+  withTiming,
+} from 'react-native-reanimated';
 import {
   Canvas,
-  Path,
   Circle,
   Group,
+  Path,
   usePathValue,
   vec,
   LinearGradient,
@@ -19,15 +27,8 @@ import {
   Blur,
   Mask,
 } from '@shopify/react-native-skia';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import {
-  useSharedValue,
-  useDerivedValue,
-  runOnJS,
-  withTiming,
-} from 'react-native-reanimated';
-import { useRef, useState } from 'react';
 
+// Constants for the slider dimensions and appearance
 const { width } = Dimensions.get('window');
 const CIRCLE_SIZE = width * 0.8;
 const CIRCLE_STROKE_WIDTH = 70;
@@ -39,37 +40,43 @@ const CENTER = CIRCLE_SIZE / 2;
 const MAX_MONTHS = 12;
 
 // Gradient colors for the progress arc
-const progressGradientColors = ['#F04EA2', '#CD1D5E', '#D6215A', '#F13758'];
-const progressGradientPositions = [0.5, 0.75, 0.85, 1.0];
+const PROGRESS_GRADIENT_COLORS = ['#F04EA2', '#CD1D5E', '#D6215A', '#F13758'];
+const PROGRESS_GRADIENT_POSITIONS = [0.5, 0.75, 0.85, 1.0];
 
+/**
+ * Airbnb-style circular slider component for selecting months
+ */
 export default function HomeScreen() {
-  // Add a React state for the display value - initialize with the same value as progressReanimated (0.33 * 12 = ~4)
+  // State for the display value (1-12 months)
   const [displayText, setDisplayText] = useState('1');
 
   // Reanimated values for gestures and animations
-  const progressReanimated = useSharedValue(0.1); // Initial value (4 months / 12 months)
+  const progressReanimated = useSharedValue(0.1); // Initial value (represents ~1 month)
   const isPressed = useSharedValue(false);
   const screen = useWindowDimensions();
 
-  // Display value (snapped to nearest month)
+  // Reference to the canvas container view for measuring position
+  const canvasRef = useRef(null);
+
+  // Calculate the display value (snapped to nearest month)
   const displayValue = useDerivedValue(() => {
-    // Calculate months value (0-12)
     const months = Math.round(progressReanimated.value * MAX_MONTHS);
     return months.toString();
   });
 
-  // Use animated reaction to update the React state
+  // Update the React state when the animated value changes
   useDerivedValue(() => {
     runOnJS(setDisplayText)(displayValue.value);
   });
 
-  // Create the arc path for the progress indicator using usePathValue
+  // Create the arc path for the progress indicator
   const arcPath = usePathValue((path) => {
     'worklet';
     path.reset();
-    const p = progressReanimated.value;
+
+    const progress = progressReanimated.value;
     const startAngle = -Math.PI / 2 / 1.06;
-    const endAngle = -Math.PI / 2 + 2 * Math.PI * p;
+    const endAngle = -Math.PI / 2 + 2 * Math.PI * progress;
 
     // Calculate the main arc points
     const arcRadius = CIRCLE_RADIUS;
@@ -81,7 +88,7 @@ export default function HomeScreen() {
     // Draw the arc
     path.moveTo(startX, startY);
 
-    // Draw the arc using small line segments
+    // Draw the arc using small line segments for smooth appearance
     const steps = 64;
     for (let i = 0; i <= steps; i++) {
       const angle = startAngle + (endAngle - startAngle) * (i / steps);
@@ -95,14 +102,14 @@ export default function HomeScreen() {
 
   // Calculate the position of the knob
   const knobX = useDerivedValue(() => {
-    const p = progressReanimated.value;
-    const angle = -Math.PI / 2 + 2 * Math.PI * p;
+    const progress = progressReanimated.value;
+    const angle = -Math.PI / 2 + 2 * Math.PI * progress;
     return CENTER + Math.cos(angle) * CIRCLE_RADIUS;
   });
 
   const knobY = useDerivedValue(() => {
-    const p = progressReanimated.value;
-    const angle = -Math.PI / 2 + 2 * Math.PI * p;
+    const progress = progressReanimated.value;
+    const angle = -Math.PI / 2 + 2 * Math.PI * progress;
     return CENTER + Math.sin(angle) * CIRCLE_RADIUS;
   });
 
@@ -114,10 +121,7 @@ export default function HomeScreen() {
     return { x, y, index };
   });
 
-  // Reference to the canvas container view for measuring position
-  const canvasRef = useRef(null);
-
-  // Handle gestures
+  // Handle pan gestures for the slider
   const gesture = Gesture.Pan()
     .onBegin(() => {
       isPressed.value = true;
@@ -129,7 +133,7 @@ export default function HomeScreen() {
       const offsetX = screen.width / 2 - CIRCLE_SIZE / 2;
       const offsetY = screen.height / 2 - CIRCLE_SIZE / 2;
 
-      // Get the touch position relative to the canvas center, accounting for the offset
+      // Get the touch position relative to the canvas center
       const touchX = e.x - (CENTER + offsetX);
       const touchY = e.y - (CENTER + offsetY);
 
@@ -158,6 +162,48 @@ export default function HomeScreen() {
       isPressed.value = false;
     });
 
+  // Path for the rounded cap at the start position
+  const startCapPath = usePathValue((path) => {
+    'worklet';
+    path.reset();
+
+    // Calculate dimensions for the rounded rectangle
+    const capWidth = INNER_CIRCLE_STROKE_WIDTH / 4;
+    const capHeight = INNER_CIRCLE_STROKE_WIDTH * 1.0003;
+    const cornerRadius = INNER_CIRCLE_STROKE_WIDTH / 8;
+
+    // Position the cap at the start of the arc (top of circle)
+    const capX = CENTER - capWidth / 10;
+    const capY = (CENTER - CIRCLE_RADIUS - capHeight / 2) * 1.15;
+
+    // Draw rounded rectangle with adjusted top-right corner
+    path.moveTo(capX + cornerRadius, capY);
+    // Top edge (stops before the corner)
+    path.lineTo(capX + capWidth - cornerRadius, capY);
+    // Top-right corner (pushed down)
+    path.quadTo(capX + capWidth, capY, capX + capWidth + 2, capY + 0.1);
+    // Right edge
+    path.lineTo(capX + capWidth, capY + capHeight);
+    // Bottom-right corner
+    path.quadTo(
+      capX + capWidth,
+      capY + capHeight,
+      capX + capWidth - cornerRadius,
+      capY + capHeight
+    );
+    // Bottom edge
+    path.lineTo(capX + cornerRadius, capY + capHeight);
+    // Bottom-left corner
+    path.quadTo(capX, capY + capHeight, capX, capY + capHeight - cornerRadius);
+    // Left edge
+    path.lineTo(capX, capY + cornerRadius);
+    // Top-left corner
+    path.quadTo(capX, capY, capX + cornerRadius, capY);
+
+    path.close();
+    return path;
+  });
+
   return (
     <View style={styles.container}>
       <GestureDetector gesture={gesture}>
@@ -169,7 +215,7 @@ export default function HomeScreen() {
                 { translateY: screen.height / 2 - CIRCLE_SIZE / 2 },
               ]}
             >
-              {/* Background circle */}
+              {/* Background circle with shadows */}
               <Circle
                 cx={CENTER}
                 cy={CENTER}
@@ -183,7 +229,7 @@ export default function HomeScreen() {
                 <Shadow dx={0} dy={3} blur={2} color="#fff" />
               </Circle>
 
-              {/* Dots around the circle */}
+              {/* Month indicator dots around the circle */}
               <Group>
                 {dots.map((dot) => (
                   <Circle
@@ -196,6 +242,7 @@ export default function HomeScreen() {
                 ))}
               </Group>
 
+              {/* Inner circle with shadows */}
               <Circle
                 cx={CENTER}
                 cy={CENTER}
@@ -205,6 +252,8 @@ export default function HomeScreen() {
                 <Shadow dx={0} dy={-7} blur={3} color="#0000001F" inner />
                 <Shadow dx={0} dy={7} blur={3} color="#ffffff" inner />
               </Circle>
+
+              {/* Glow effect for the knob */}
               <Group>
                 <Mask
                   mask={
@@ -231,6 +280,7 @@ export default function HomeScreen() {
                 <Blur blur={3} />
               </Group>
 
+              {/* Glow effect for the start cap */}
               <Group>
                 <Mask
                   mask={
@@ -244,7 +294,6 @@ export default function HomeScreen() {
                   }
                 >
                   <Group>
-                    {/* Blur effect at the cap position (start of the arc) */}
                     <Circle
                       cx={CENTER}
                       cy={(CENTER - CIRCLE_RADIUS) * 1.15}
@@ -257,6 +306,7 @@ export default function HomeScreen() {
                 </Mask>
                 <Blur blur={3} />
               </Group>
+
               {/* Progress arc with shadows */}
               <Group
                 layer={
@@ -286,72 +336,18 @@ export default function HomeScreen() {
                     <RadialGradient
                       c={vec(CENTER, CENTER)}
                       r={CIRCLE_SIZE / 2}
-                      colors={progressGradientColors}
-                      positions={progressGradientPositions}
+                      colors={PROGRESS_GRADIENT_COLORS}
+                      positions={PROGRESS_GRADIENT_POSITIONS}
                     />
                   </Path>
 
-                  {/* Slightly rounded cap at the start position */}
-                  <Path
-                    path={usePathValue((path) => {
-                      'worklet';
-                      path.reset();
-
-                      // Calculate dimensions for the rounded rectangle
-                      const capWidth = INNER_CIRCLE_STROKE_WIDTH / 4;
-                      const capHeight = INNER_CIRCLE_STROKE_WIDTH * 1.0003;
-                      const cornerRadius = INNER_CIRCLE_STROKE_WIDTH / 8;
-
-                      // Position the cap at the start of the arc (top of circle)
-                      const capX = CENTER - capWidth / 10;
-                      const capY =
-                        (CENTER - CIRCLE_RADIUS - capHeight / 2) * 1.15;
-
-                      // Draw rounded rectangle with adjusted top-right corner
-                      path.moveTo(capX + cornerRadius, capY);
-                      // Top edge (stops before the corner)
-                      path.lineTo(capX + capWidth - cornerRadius, capY);
-                      // Top-right corner (pushed down)
-                      path.quadTo(
-                        capX + capWidth,
-                        capY,
-                        capX + capWidth + 2,
-                        capY + 0.1
-                      );
-                      // Right edge
-                      path.lineTo(capX + capWidth, capY + capHeight);
-                      // Bottom-right corner
-                      path.quadTo(
-                        capX + capWidth,
-                        capY + capHeight,
-                        capX + capWidth - cornerRadius,
-                        capY + capHeight
-                      );
-                      // Bottom edge
-                      path.lineTo(capX + cornerRadius, capY + capHeight);
-                      // Bottom-left corner
-                      path.quadTo(
-                        capX,
-                        capY + capHeight,
-                        capX,
-                        capY + capHeight - cornerRadius
-                      );
-                      // Left edge
-                      path.lineTo(capX, capY + cornerRadius);
-                      // Top-left corner
-                      path.quadTo(capX, capY, capX + cornerRadius, capY);
-
-                      path.close();
-                      return path;
-                    })}
-                    color="#FF385C"
-                    style="fill"
-                  >
+                  {/* Rounded cap at the start position */}
+                  <Path path={startCapPath} color="#FF385C" style="fill">
                     <RadialGradient
                       c={vec(CENTER, CENTER)}
                       r={CIRCLE_SIZE / 2}
-                      colors={progressGradientColors}
-                      positions={progressGradientPositions}
+                      colors={PROGRESS_GRADIENT_COLORS}
+                      positions={PROGRESS_GRADIENT_POSITIONS}
                     />
                   </Path>
 
@@ -366,8 +362,8 @@ export default function HomeScreen() {
                     <RadialGradient
                       c={vec(CENTER, CENTER)}
                       r={CIRCLE_SIZE / 2}
-                      colors={progressGradientColors}
-                      positions={progressGradientPositions}
+                      colors={PROGRESS_GRADIENT_COLORS}
+                      positions={PROGRESS_GRADIENT_POSITIONS}
                     />
                   </Circle>
                 </Group>
