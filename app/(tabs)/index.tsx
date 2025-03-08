@@ -10,25 +10,19 @@ import {
   Path,
   Circle,
   Group,
-  Skia,
   usePathValue,
   vec,
   LinearGradient,
   RadialGradient,
   Shadow,
-  Mask,
   Paint,
-  Blur,
-  CornerPathEffect,
 } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
+import {
   useSharedValue,
   useDerivedValue,
   runOnJS,
-  withSpring,
   withTiming,
-  useAnimatedReaction,
 } from 'react-native-reanimated';
 import { useRef, useState } from 'react';
 
@@ -44,40 +38,24 @@ const MAX_MONTHS = 12;
 
 export default function HomeScreen() {
   // Add a React state for the display value - initialize with the same value as progressReanimated (0.33 * 12 = ~4)
-  const [displayText, setDisplayText] = useState('4');
+  const [displayText, setDisplayText] = useState('1');
 
   // Reanimated values for gestures and animations
-  const progressReanimated = useSharedValue(0.33); // Initial value (4 months / 12 months)
+  const progressReanimated = useSharedValue(0.1); // Initial value (4 months / 12 months)
   const isPressed = useSharedValue(false);
   const screen = useWindowDimensions();
 
   // Display value (snapped to nearest month)
-  const displayMonths = useDerivedValue(() => {
-    // When pressed, show the exact value (rounded to nearest integer)
-    if (isPressed.value) {
-      return Math.round(progressReanimated.value * MAX_MONTHS);
-    }
-    // When not pressed, show the snapped value
-    return Math.round(progressReanimated.value * MAX_MONTHS);
-  });
-
-  // For displaying decimal values during dragging
   const displayValue = useDerivedValue(() => {
-    if (isPressed.value) {
-      // During dragging, show the exact value as a whole number without decimals
-      return Math.round(progressReanimated.value * MAX_MONTHS).toString();
-    }
-    // When not dragging, show the integer value
-    return Math.round(progressReanimated.value * MAX_MONTHS).toString();
+    // Calculate months value (0-12)
+    const months = Math.round(progressReanimated.value * MAX_MONTHS);
+    return months.toString();
   });
 
   // Use animated reaction to update the React state
-  useAnimatedReaction(
-    () => displayValue.value,
-    (currentValue) => {
-      runOnJS(setDisplayText)(currentValue);
-    }
-  );
+  useDerivedValue(() => {
+    runOnJS(setDisplayText)(displayValue.value);
+  });
 
   // Create the arc path for the progress indicator using usePathValue
   const arcPath = usePathValue((path) => {
@@ -93,10 +71,6 @@ export default function HomeScreen() {
     // Start point (flat cap)
     const startX = CENTER + Math.cos(startAngle) * arcRadius;
     const startY = CENTER + Math.sin(startAngle) * arcRadius;
-
-    // End point
-    const endX = CENTER + Math.cos(endAngle) * arcRadius;
-    const endY = CENTER + Math.sin(endAngle) * arcRadius;
 
     // Draw the arc
     path.moveTo(startX, startY);
@@ -124,11 +98,6 @@ export default function HomeScreen() {
     const p = progressReanimated.value;
     const angle = -Math.PI / 2 + 2 * Math.PI * p;
     return CENTER + Math.sin(angle) * CIRCLE_RADIUS;
-  });
-
-  // Calculate the knob size with animation when pressed
-  const knobSize = useDerivedValue(() => {
-    return isPressed.value ? KNOB_SIZE * 1.05 : KNOB_SIZE;
   });
 
   // Create dots around the circle
@@ -173,7 +142,7 @@ export default function HomeScreen() {
       // Update progress - no snapping during drag
       progressReanimated.value = newProgress;
     })
-    .onEnd((e) => {
+    .onEnd(() => {
       // Snap to nearest month when finger is lifted
       const nearestMonth =
         Math.round(progressReanimated.value * MAX_MONTHS) / MAX_MONTHS;
@@ -182,6 +151,10 @@ export default function HomeScreen() {
       });
       isPressed.value = false;
     });
+
+  // Gradient colors for the progress arc
+  const progressGradientColors = ['#F04EA2', '#CD1D5E', '#D6215A', '#F13758'];
+  const progressGradientPositions = [0.5, 0.75, 0.85, 1.0];
 
   return (
     <View style={styles.container}>
@@ -205,7 +178,6 @@ export default function HomeScreen() {
               >
                 <Shadow dx={0} dy={12} blur={12} color="#00000030" inner />
                 <Shadow dx={0} dy={-4} blur={4} color="#00000030" />
-                <Shadow dx={0} dy={3} blur={2} color="#fff" />
                 <Shadow dx={0} dy={3} blur={2} color="#fff" />
               </Circle>
 
@@ -231,6 +203,8 @@ export default function HomeScreen() {
                 <Shadow dx={0} dy={-7} blur={3} color="#0000001F" inner />
                 <Shadow dx={0} dy={7} blur={3} color="#ffffff" inner />
               </Circle>
+
+              {/* Progress indicator circle */}
               <Circle
                 cx={knobX}
                 cy={knobY}
@@ -240,6 +214,8 @@ export default function HomeScreen() {
               >
                 <Shadow dx={0} dy={0} blur={10} color="#DC496A" shadowOnly />
               </Circle>
+
+              {/* Progress arc with shadows */}
               <Group
                 layer={
                   <Paint>
@@ -252,13 +228,10 @@ export default function HomeScreen() {
                   layer={
                     <Paint>
                       <Shadow dx={0} dy={0} blur={2.5} color="#F13758" inner />
-                      <Shadow dx={0} dy={0} blur={2.5} color="#F13758" inner />
-                      <Shadow dx={0} dy={0} blur={2.5} color="#F13758" inner />
-                      <Shadow dx={0} dy={0} blur={2.5} color="#F13758" inner />
-                      <Shadow dx={0} dy={0} blur={2.5} color="#F13758" inner />
                     </Paint>
                   }
                 >
+                  {/* Main progress arc */}
                   <Path
                     path={arcPath}
                     color="#FF385C"
@@ -269,12 +242,10 @@ export default function HomeScreen() {
                     <RadialGradient
                       c={vec(CENTER, CENTER)}
                       r={CIRCLE_SIZE / 2}
-                      colors={['#F04EA2', '#CD1D5E', '#D6215A', '#F13758']}
-                      positions={[0.5, 0.75, 0.85, 1.0]}
+                      colors={progressGradientColors}
+                      positions={progressGradientPositions}
                     />
                   </Path>
-
-                  {/* Progress arc with flat start and rounded end */}
 
                   {/* Slightly rounded cap at the start position */}
                   <Path
@@ -285,15 +256,12 @@ export default function HomeScreen() {
                       // Calculate dimensions for the rounded rectangle
                       const capWidth = INNER_CIRCLE_STROKE_WIDTH / 4;
                       const capHeight = INNER_CIRCLE_STROKE_WIDTH * 1.0003;
-                      const cornerRadius = INNER_CIRCLE_STROKE_WIDTH / 8; // Adjust for desired roundness
+                      const cornerRadius = INNER_CIRCLE_STROKE_WIDTH / 8;
 
                       // Position the cap at the start of the arc (top of circle)
                       const capX = CENTER - capWidth / 10;
                       const capY =
                         (CENTER - CIRCLE_RADIUS - capHeight / 2) * 1.15;
-
-                      // Offset for the top-right corner to push it down
-                      const topRightYOffset = INNER_CIRCLE_STROKE_WIDTH / 4;
 
                       // Draw rounded rectangle with adjusted top-right corner
                       path.moveTo(capX + cornerRadius, capY);
@@ -338,10 +306,12 @@ export default function HomeScreen() {
                     <RadialGradient
                       c={vec(CENTER, CENTER)}
                       r={CIRCLE_SIZE / 2}
-                      colors={['#F04EA2', '#CD1D5E', '#D6215A', '#F13758']}
-                      positions={[0.5, 0.75, 0.85, 1.0]}
+                      colors={progressGradientColors}
+                      positions={progressGradientPositions}
                     />
                   </Path>
+
+                  {/* End cap circle */}
                   <Circle
                     cx={knobX}
                     cy={knobY}
@@ -352,30 +322,28 @@ export default function HomeScreen() {
                     <RadialGradient
                       c={vec(CENTER, CENTER)}
                       r={CIRCLE_SIZE / 2}
-                      colors={['#F04EA2', '#CD1D5E', '#D6215A', '#F13758']}
-                      positions={[0.5, 0.75, 0.85, 1.0]}
+                      colors={progressGradientColors}
+                      positions={progressGradientPositions}
                     />
-                    {/* <Shadow dx={0} dy={0} blur={10} color="#DC496A" /> */}
                   </Circle>
-                  {/* Rounded cap at the end (knob position) */}
                 </Group>
               </Group>
-              {/* White knob at the end of the progress */}
 
+              {/* White knob at the end of the progress */}
               <Group
                 transform={useDerivedValue(() => [
                   { translateX: knobX.value },
                   { translateY: knobY.value },
-                  { scale: isPressed.value ? 1 * 1.05 : 1 },
+                  { scale: isPressed.value ? 1.05 : 1 },
                 ])}
               >
-                {/* Gradient Border Circle (rotated 180°) */}
+                {/* Gradient Border Circle */}
                 <Circle
                   cx={0}
                   cy={0}
                   r={KNOB_SIZE}
                   style="stroke"
-                  strokeWidth={3} // Adjust this value for your desired border thickness
+                  strokeWidth={3}
                 >
                   <LinearGradient
                     start={vec(0, KNOB_SIZE)}
@@ -383,14 +351,9 @@ export default function HomeScreen() {
                     colors={['#BFBFBF', '#fff']}
                   />
                 </Circle>
-                {/* Inner Filled Circle */}
 
-                <Circle
-                  cx={0}
-                  cy={0}
-                  r={KNOB_SIZE - 1} // Subtract half the strokeWidth so the fill doesn't cover the border
-                  style="fill"
-                >
+                {/* Inner Filled Circle */}
+                <Circle cx={0} cy={0} r={KNOB_SIZE - 1} style="fill">
                   <LinearGradient
                     start={vec(0, -KNOB_SIZE)}
                     end={vec(0, KNOB_SIZE)}
