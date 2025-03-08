@@ -38,7 +38,7 @@ const CIRCLE_STROKE_WIDTH = 70;
 const INNER_CIRCLE_STROKE_WIDTH = CIRCLE_STROKE_WIDTH * 0.85;
 const CIRCLE_RADIUS = (CIRCLE_SIZE - CIRCLE_STROKE_WIDTH) / 2;
 const DOT_SIZE = 4;
-const KNOB_SIZE = (INNER_CIRCLE_STROKE_WIDTH / 2) * 0.8;
+const KNOB_SIZE = (INNER_CIRCLE_STROKE_WIDTH / 2) * 0.82;
 const CENTER = CIRCLE_SIZE / 2;
 const MAX_MONTHS = 12;
 
@@ -205,6 +205,8 @@ export default function HomeScreen() {
               >
                 <Shadow dx={0} dy={12} blur={12} color="#00000030" inner />
                 <Shadow dx={0} dy={-4} blur={4} color="#00000030" />
+                <Shadow dx={0} dy={3} blur={2} color="#fff" />
+                <Shadow dx={0} dy={3} blur={2} color="#fff" />
               </Circle>
 
               {/* Dots around the circle */}
@@ -215,7 +217,7 @@ export default function HomeScreen() {
                     cx={dot.x}
                     cy={dot.y}
                     r={DOT_SIZE / 2}
-                    color={'#888888'}
+                    color={'#6A6A6A'}
                   />
                 ))}
               </Group>
@@ -359,13 +361,43 @@ export default function HomeScreen() {
                 </Group>
               </Group>
               {/* White knob at the end of the progress */}
-              <Circle
-                cx={knobX}
-                cy={knobY}
-                r={knobSize}
-                color="#F7F7F7"
-                style="fill"
-              />
+
+              <Group
+                transform={useDerivedValue(() => [
+                  { translateX: knobX.value },
+                  { translateY: knobY.value },
+                  { scale: isPressed.value ? 1 * 1.05 : 1 },
+                ])}
+              >
+                {/* Gradient Border Circle (rotated 180°) */}
+                <Circle
+                  cx={0}
+                  cy={0}
+                  r={KNOB_SIZE}
+                  style="stroke"
+                  strokeWidth={3} // Adjust this value for your desired border thickness
+                >
+                  <LinearGradient
+                    start={vec(0, KNOB_SIZE)}
+                    end={vec(0, -KNOB_SIZE)}
+                    colors={['#BFBFBF', '#fff']}
+                  />
+                </Circle>
+                {/* Inner Filled Circle */}
+
+                <Circle
+                  cx={0}
+                  cy={0}
+                  r={KNOB_SIZE - 1} // Subtract half the strokeWidth so the fill doesn't cover the border
+                  style="fill"
+                >
+                  <LinearGradient
+                    start={vec(0, -KNOB_SIZE)}
+                    end={vec(0, KNOB_SIZE)}
+                    colors={['#D5D5D5', '#fff']}
+                  />
+                </Circle>
+              </Group>
             </Group>
           </Canvas>
         </View>
