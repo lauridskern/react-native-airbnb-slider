@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useMemo, memo, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -43,6 +43,72 @@ const MAX_MONTHS = 12;
 const PROGRESS_GRADIENT_COLORS = ['#F04EA2', '#CD1D5E', '#D6215A', '#F13758'];
 const PROGRESS_GRADIENT_POSITIONS = [0.5, 0.75, 0.85, 1.0];
 
+// Define interface for Dot component props
+interface DotProps {
+  x: number;
+  y: number;
+  size: number;
+}
+
+// Memoized component for rendering a single dot
+const Dot = memo(({ x, y, size }: DotProps) => {
+  return <Circle cx={x} cy={y} r={size / 2} color={'#6A6A6A'} />;
+});
+
+// Define interface for Knob component props
+interface KnobProps {
+  knobX: any; // Using 'any' for Skia's useDerivedValue type
+  knobY: any;
+  isPressed: any;
+  knobSize: number;
+}
+
+// Memoized component for rendering the knob
+const Knob = memo(({ knobX, knobY, isPressed, knobSize }: KnobProps) => {
+  return (
+    <Group
+      transform={useDerivedValue(() => [
+        { translateX: knobX.value },
+        { translateY: knobY.value },
+        { scale: isPressed.value ? 1.05 : 1 },
+      ])}
+    >
+      {/* Gradient Border Circle */}
+      <Circle cx={0} cy={0} r={knobSize} style="stroke" strokeWidth={3}>
+        <LinearGradient
+          start={vec(0, knobSize)}
+          end={vec(0, -knobSize)}
+          colors={['#BFBFBF', '#fff']}
+        />
+      </Circle>
+
+      {/* Inner Filled Circle */}
+      <Circle cx={0} cy={0} r={knobSize - 1} style="fill">
+        <LinearGradient
+          start={vec(0, -knobSize)}
+          end={vec(0, knobSize)}
+          colors={['#D5D5D5', '#fff']}
+        />
+      </Circle>
+    </Group>
+  );
+});
+
+// Define interface for ValueDisplay component props
+interface ValueDisplayProps {
+  value: string;
+}
+
+// Memoized component for displaying the value
+const ValueDisplay = memo(({ value }: ValueDisplayProps) => {
+  return (
+    <View style={styles.valueContainer}>
+      <Text style={styles.valueText}>{value}</Text>
+      <Text style={styles.unitText}>months</Text>
+    </View>
+  );
+});
+
 /**
  * Airbnb-style circular slider component for selecting months
  */
@@ -58,6 +124,11 @@ export default function HomeScreen() {
   // Reference to the canvas container view for measuring position
   const canvasRef = useRef(null);
 
+  // Memoize the setDisplayText callback to prevent unnecessary re-renders
+  const setDisplayTextCallback = useCallback((value: string) => {
+    setDisplayText(value);
+  }, []);
+
   // Calculate the display value (snapped to nearest month)
   const displayValue = useDerivedValue(() => {
     const months = Math.round(progressReanimated.value * MAX_MONTHS);
@@ -66,7 +137,7 @@ export default function HomeScreen() {
 
   // Update the React state when the animated value changes
   useDerivedValue(() => {
-    runOnJS(setDisplayText)(displayValue.value);
+    runOnJS(setDisplayTextCallback)(displayValue.value);
   });
 
   // Create the arc path for the progress indicator
@@ -113,54 +184,58 @@ export default function HomeScreen() {
     return CENTER + Math.sin(angle) * CIRCLE_RADIUS;
   });
 
-  // Create dots around the circle
-  const dots = Array.from({ length: MAX_MONTHS }).map((_, index) => {
-    const angle = -Math.PI / 2 + (2 * Math.PI * index) / MAX_MONTHS;
-    const x = CENTER + Math.cos(angle) * CIRCLE_RADIUS;
-    const y = CENTER + Math.sin(angle) * CIRCLE_RADIUS;
-    return { x, y, index };
-  });
-
-  // Handle pan gestures for the slider
-  const gesture = Gesture.Pan()
-    .onBegin(() => {
-      isPressed.value = true;
-    })
-    .onUpdate((e) => {
-      if (!canvasRef.current) return;
-
-      // Calculate the offset applied by the transform
-      const offsetX = screen.width / 2 - CIRCLE_SIZE / 2;
-      const offsetY = screen.height / 2 - CIRCLE_SIZE / 2;
-
-      // Get the touch position relative to the canvas center
-      const touchX = e.x - (CENTER + offsetX);
-      const touchY = e.y - (CENTER + offsetY);
-
-      // Calculate the angle in radians
-      let angle = Math.atan2(touchY, touchX);
-
-      // Normalize angle to start from the top (12 o'clock position)
-      angle = (angle + Math.PI * 2.5) % (Math.PI * 2);
-
-      // Convert angle to progress (0-1) - stepless during dragging
-      let newProgress = angle / (2 * Math.PI);
-
-      // Ensure the progress is within bounds
-      newProgress = Math.max(1 / MAX_MONTHS, Math.min(1, newProgress));
-
-      // Update progress - no snapping during drag
-      progressReanimated.value = newProgress;
-    })
-    .onEnd(() => {
-      // Snap to nearest month when finger is lifted
-      const nearestMonth =
-        Math.round(progressReanimated.value * MAX_MONTHS) / MAX_MONTHS;
-      progressReanimated.value = withTiming(nearestMonth, {
-        duration: 100,
-      });
-      isPressed.value = false;
+  // Create dots around the circle - memoized to prevent recreation on each render
+  const dots = useMemo(() => {
+    return Array.from({ length: MAX_MONTHS }).map((_, index) => {
+      const angle = -Math.PI / 2 + (2 * Math.PI * index) / MAX_MONTHS;
+      const x = CENTER + Math.cos(angle) * CIRCLE_RADIUS;
+      const y = CENTER + Math.sin(angle) * CIRCLE_RADIUS;
+      return { x, y, index };
     });
+  }, []);
+
+  // Handle pan gestures for the slider - memoized to prevent recreation on each render
+  const gesture = useMemo(() => {
+    return Gesture.Pan()
+      .onBegin(() => {
+        isPressed.value = true;
+      })
+      .onUpdate((e) => {
+        if (!canvasRef.current) return;
+
+        // Calculate the offset applied by the transform
+        const offsetX = screen.width / 2 - CIRCLE_SIZE / 2;
+        const offsetY = screen.height / 2 - CIRCLE_SIZE / 2;
+
+        // Get the touch position relative to the canvas center
+        const touchX = e.x - (CENTER + offsetX);
+        const touchY = e.y - (CENTER + offsetY);
+
+        // Calculate the angle in radians
+        let angle = Math.atan2(touchY, touchX);
+
+        // Normalize angle to start from the top (12 o'clock position)
+        angle = (angle + Math.PI * 2.5) % (Math.PI * 2);
+
+        // Convert angle to progress (0-1) - stepless during dragging
+        let newProgress = angle / (2 * Math.PI);
+
+        // Ensure the progress is within bounds
+        newProgress = Math.max(1 / MAX_MONTHS, Math.min(1, newProgress));
+
+        // Update progress - no snapping during drag
+        progressReanimated.value = newProgress;
+      })
+      .onEnd(() => {
+        // Snap to nearest month when finger is lifted
+        const nearestMonth =
+          Math.round(progressReanimated.value * MAX_MONTHS) / MAX_MONTHS;
+        progressReanimated.value = withTiming(nearestMonth, {
+          duration: 100,
+        });
+        isPressed.value = false;
+      });
+  }, [screen.width, screen.height]);
 
   // Path for the rounded cap at the start position
   const startCapPath = usePathValue((path) => {
@@ -204,17 +279,20 @@ export default function HomeScreen() {
     return path;
   });
 
+  // Memoize the transform values for the main Group component
+  const mainGroupTransform = useMemo(() => {
+    return [
+      { translateX: screen.width / 2 - CIRCLE_SIZE / 2 },
+      { translateY: screen.height / 2 - CIRCLE_SIZE / 2 },
+    ];
+  }, [screen.width, screen.height]);
+
   return (
     <View style={styles.container}>
       <GestureDetector gesture={gesture}>
         <View ref={canvasRef} style={styles.canvasContainer}>
           <Canvas style={styles.canvas}>
-            <Group
-              transform={[
-                { translateX: screen.width / 2 - CIRCLE_SIZE / 2 },
-                { translateY: screen.height / 2 - CIRCLE_SIZE / 2 },
-              ]}
-            >
+            <Group transform={mainGroupTransform}>
               {/* Background circle with shadows */}
               <Circle
                 cx={CENTER}
@@ -232,13 +310,7 @@ export default function HomeScreen() {
               {/* Month indicator dots around the circle */}
               <Group>
                 {dots.map((dot) => (
-                  <Circle
-                    key={dot.index}
-                    cx={dot.x}
-                    cy={dot.y}
-                    r={DOT_SIZE / 2}
-                    color={'#6A6A6A'}
-                  />
+                  <Dot key={dot.index} x={dot.x} y={dot.y} size={DOT_SIZE} />
                 ))}
               </Group>
 
@@ -370,47 +442,19 @@ export default function HomeScreen() {
               </Group>
 
               {/* White knob at the end of the progress */}
-              <Group
-                transform={useDerivedValue(() => [
-                  { translateX: knobX.value },
-                  { translateY: knobY.value },
-                  { scale: isPressed.value ? 1.05 : 1 },
-                ])}
-              >
-                {/* Gradient Border Circle */}
-                <Circle
-                  cx={0}
-                  cy={0}
-                  r={KNOB_SIZE}
-                  style="stroke"
-                  strokeWidth={3}
-                >
-                  <LinearGradient
-                    start={vec(0, KNOB_SIZE)}
-                    end={vec(0, -KNOB_SIZE)}
-                    colors={['#BFBFBF', '#fff']}
-                  />
-                </Circle>
-
-                {/* Inner Filled Circle */}
-                <Circle cx={0} cy={0} r={KNOB_SIZE - 1} style="fill">
-                  <LinearGradient
-                    start={vec(0, -KNOB_SIZE)}
-                    end={vec(0, KNOB_SIZE)}
-                    colors={['#D5D5D5', '#fff']}
-                  />
-                </Circle>
-              </Group>
+              <Knob
+                knobX={knobX}
+                knobY={knobY}
+                isPressed={isPressed}
+                knobSize={KNOB_SIZE}
+              />
             </Group>
           </Canvas>
         </View>
       </GestureDetector>
 
       {/* Display the current month value */}
-      <View style={styles.valueContainer}>
-        <Text style={styles.valueText}>{displayText}</Text>
-        <Text style={styles.unitText}>months</Text>
-      </View>
+      <ValueDisplay value={displayText} />
     </View>
   );
 }
