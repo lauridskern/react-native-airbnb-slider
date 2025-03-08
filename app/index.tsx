@@ -16,6 +16,8 @@ import {
   RadialGradient,
   Shadow,
   Paint,
+  Blur,
+  Mask,
 } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
@@ -35,6 +37,10 @@ const DOT_SIZE = 4;
 const KNOB_SIZE = (INNER_CIRCLE_STROKE_WIDTH / 2) * 0.82;
 const CENTER = CIRCLE_SIZE / 2;
 const MAX_MONTHS = 12;
+
+// Gradient colors for the progress arc
+const progressGradientColors = ['#F04EA2', '#CD1D5E', '#D6215A', '#F13758'];
+const progressGradientPositions = [0.5, 0.75, 0.85, 1.0];
 
 export default function HomeScreen() {
   // Add a React state for the display value - initialize with the same value as progressReanimated (0.33 * 12 = ~4)
@@ -152,10 +158,6 @@ export default function HomeScreen() {
       isPressed.value = false;
     });
 
-  // Gradient colors for the progress arc
-  const progressGradientColors = ['#F04EA2', '#CD1D5E', '#D6215A', '#F13758'];
-  const progressGradientPositions = [0.5, 0.75, 0.85, 1.0];
-
   return (
     <View style={styles.container}>
       <GestureDetector gesture={gesture}>
@@ -203,31 +205,73 @@ export default function HomeScreen() {
                 <Shadow dx={0} dy={-7} blur={3} color="#0000001F" inner />
                 <Shadow dx={0} dy={7} blur={3} color="#ffffff" inner />
               </Circle>
+              <Group>
+                <Mask
+                  mask={
+                    <Circle
+                      cx={CENTER}
+                      cy={CENTER}
+                      r={CIRCLE_RADIUS}
+                      style="stroke"
+                      strokeWidth={CIRCLE_STROKE_WIDTH}
+                    />
+                  }
+                >
+                  <Group>
+                    <Circle
+                      cx={knobX}
+                      cy={knobY}
+                      r={(INNER_CIRCLE_STROKE_WIDTH / 2) * 2.5}
+                      color="#FF385C"
+                    >
+                      <Blur blur={40} />
+                    </Circle>
+                  </Group>
+                </Mask>
+                <Blur blur={3} />
+              </Group>
 
-              {/* Progress indicator circle */}
-              <Circle
-                cx={knobX}
-                cy={knobY}
-                r={INNER_CIRCLE_STROKE_WIDTH / 2}
-                color="#FF385C"
-                style="fill"
-              >
-                <Shadow dx={0} dy={0} blur={10} color="#DC496A" shadowOnly />
-              </Circle>
-
+              <Group>
+                <Mask
+                  mask={
+                    <Circle
+                      cx={CENTER}
+                      cy={CENTER}
+                      r={CIRCLE_RADIUS}
+                      style="stroke"
+                      strokeWidth={CIRCLE_STROKE_WIDTH}
+                    />
+                  }
+                >
+                  <Group>
+                    {/* Blur effect at the cap position (start of the arc) */}
+                    <Circle
+                      cx={CENTER}
+                      cy={(CENTER - CIRCLE_RADIUS) * 1.15}
+                      r={(INNER_CIRCLE_STROKE_WIDTH / 2) * 1.5}
+                      color="#FF385C"
+                    >
+                      <Blur blur={30} />
+                    </Circle>
+                  </Group>
+                </Mask>
+                <Blur blur={3} />
+              </Group>
               {/* Progress arc with shadows */}
               <Group
                 layer={
                   <Paint>
-                    <Shadow dx={0} dy={0} blur={2} color="#000000D9" />
-                    <Shadow dx={0} dy={0} blur={8} color="#F13758" />
+                    <Shadow dx={0} dy={0} blur={2} color="#400E15" />
+                    <Shadow dx={0} dy={0} blur={4} color="#D1193DCC" />
+                    <Shadow dx={0} dy={0} blur={4} color="#D1193D99" />
                   </Paint>
                 }
               >
                 <Group
                   layer={
                     <Paint>
-                      <Shadow dx={0} dy={0} blur={2.5} color="#F13758" inner />
+                      <Shadow dx={0} dy={0} blur={3} color="#D1193D" inner />
+                      <Shadow dx={0} dy={0} blur={3} color="#D1193D" inner />
                     </Paint>
                   }
                 >
@@ -395,15 +439,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   valueText: {
-    fontSize: 140,
+    fontFamily: 'AirbnbCereal',
+    fontSize: 130,
     fontWeight: 'bold',
-    color: '#000000',
+    color: '#222222',
     marginTop: -30,
   },
   unitText: {
+    fontFamily: 'AirbnbCereal',
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#000000',
-    marginTop: -15,
+    color: '#222222',
+    marginTop: -25,
   },
 });
